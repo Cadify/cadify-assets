@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bolt Hole Layout – HTML + SVG (Responsive, Embeddable)</title>
+  <style>
+    :root { --card:#fff; --muted:#6b7280; --border:#e5e7eb; --bg:#f8fafc; }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; background: var(--bg); }
+    .wrap { max-width: 1200px; margin: 16px auto; padding: 0 12px; }
+    .grid { display: grid; grid-template-columns: 360px 1fr; gap: 16px; align-items: start; }
+    .card { background: var(--card); border:1px solid var(--border); border-radius:16px; padding:12px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+    h1 { font-size: 20px; margin: 4px 0 8px; }
+    label { display:block; margin:10px 0; font-size: 14px; }
+    input[type="number"] { width: 90px; margin-left: 8px; }
+    input[type="range"] { width: 100%; }
+    .row { display:flex; align-items:center; gap:10px; flex-wrap: wrap; }
+    .out { display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-top:8px; }
+    .muted { color: var(--muted); font-size:12px; }
+    .foot { margin-top:8px; font-size:12px; color: var(--muted); }
+    /* Stack only on narrow screens (<768px) */ 
+    @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="grid">
+    <div class="card">
+      <h1>Bolt Hole Layout (Pure HTML + SVG)</h1>
+      <div class="row">
+        <label>PCD (mm):
+          <input id="pcdRange" type="range" min="10" max="600" value="100" step="1">
+          <input id="pcdNum" type="number" value="100" step="1">
+        </label>
+      </div>
+      <div class="row">
+        <label>Hole Ø (mm):
+          <input id="diaRange" type="range" min="0.1" max="200" value="10" step="0.1">
+          <input id="diaNum" type="number" value="10" step="0.1">
+        </label>
+      </div>
+      <div class="row">
+        <label>Number of holes:
+          <input id="nRange" type="range" min="2" max="60" value="10" step="1">
+          <input id="nNum" type="number" value="10" step="1">
+        </label>
+      </div>
+      <div class="row">
+        <label>
+          <input id="fixedScale" type="checkbox" checked>
+          Fixed scale (keep visual Ø constant)
+        </label>
+      </div>
+
+      <div class="out card">
+        <div>
+          <div class="muted">Chord ligament</div>
+          <div id="outChord">—</div>
+          <div class="muted">= PCD·sin(π/N) − Ø</div>
+        </div>
+        <div>
+          <div class="muted">Arc ligament</div>
+          <div id="outArc">—</div>
+          <div class="muted">= π·PCD/N − Ø</div>
+        </div>
+      </div>
+
+      <div class="foot" id="debug"></div>
+    </div>
+
+    <div class="card">
+      <svg id="viz"
+           viewBox="0 0 640 640"
+           preserveAspectRatio="xMidYMid meet"
+           style="width:100%; height:auto; aspect-ratio: 1 / 1;"
+           role="img" aria-label="Bolt hole layout visualization"></svg>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const els = {
+    pcdR: document.getElementById('pcdRange'),
+    pcdN: document.getElementById('pcdNum'),
+    diaR: document.getElementById('diaRange'),
+    diaN: document.getElementById('diaNum'),
+    nR: document.getElementById('nRange'),
+    nN: document.getElementById('nNum'),
+    fixed: document.getElementById('fixedScale'),
+    outChord: document.getElementById('outChord'),
+    outArc: document.getElementById('outArc'),
+    debug: document.getElementById('debug'),
+    svg: document.getElementById('viz')
+  };
+
+  function sync(a, b) {
+    a.addEventListener('input', () => { b.value = a.value; draw(); });
+    b.addEventListener('input', () => { a.value = b.value; draw(); });
+  }
+  sync(els.pcdR, els.pcdN);
+  sync(els.diaR, els.diaN);
+  sync(els.nR, els.nN);
+  els.fixed.addEventListener('change', draw);
+
+  function draw() {
+    const PCD = +els.pcdN.value;
+    const DIA = +els.diaN.value;
+    const N   = Math.max(2, Math.floor(+els.nN.value));
+    const R = PCD / 2;
+
+    const chord = Math.max(0, PCD * Math.sin(Math.PI / N) - DIA);
+    const arc   = Math.max(0, Math.PI * PCD / N - DIA);
+    els.outChord.textContent = chord.toFixed(2) + ' mm';
+    els.outArc.textContent = arc.toFixed(2) + ' mm';
+
+    const rect = els.svg.getBoundingClientRect();
+    const W = Math.max(1, rect.width);
+    const H = W;
+    const margin = 28;
+
+    const maxR = Math.min(W, H)/2 - margin;
+    const fixed = els.fixed.checked;
+    const DESIGN_MAX_PCD = 400;
+    const scale = fixed ? (maxR / (DESIGN_MAX_PCD/2)) : (R>0 ? maxR / R : 1);
+    const cx = 320, cy = 320;
+
+    els.svg.replaceChildren();
+
+    const unit = (640 / W);
+    const rPx = (R * scale) * unit;
+    const holeR = (DIA/2) * scale * unit;
+
+    els.svg.appendChild(circle(cx, cy, rPx, {fill:'none', stroke:'black','stroke-width':2,'stroke-dasharray':'6 6'}));
+    els.svg.appendChild(line(cx - rPx, cy, cx + rPx, cy, {stroke:'black','stroke-width':2,'stroke-dasharray':'10 6 2 6'}));
+    els.svg.appendChild(circle(cx, cy, 3, {fill:'black'}));
+
+    const holes = [];
+    for (let i=0;i<N;i++) {
+      const a = 2*Math.PI*i/N;
+      const x = cx + rPx*Math.cos(a);
+      const y = cy - rPx*Math.sin(a);
+      holes.push({x,y});
+      els.svg.appendChild(circle(x, y, holeR, {fill:'black', opacity:0.9}));
+    }
+
+    if (holes.length >= 2) {
+      const p0 = holes[0], p1 = holes[1];
+      const dx = p1.x - p0.x, dy = p1.y - p0.y;
+      const L = Math.hypot(dx, dy);
+      const ux = dx/L, uy = dy/L;
+      const e0x = p0.x + ux*holeR;
+      const e0y = p0.y + uy*holeR;
+      const e1x = p1.x - ux*holeR;
+      const e1y = p1.y - uy*holeR;
+      els.svg.appendChild(line(e0x, e0y, e1x, e1y, {stroke:'green','stroke-width':4}));
+      const midx = (e0x+e1x)/2, midy = (e0y+e1y)/2;
+      els.svg.appendChild(text(midx, midy-8, chord.toFixed(2)+' mm', {fill:'green','font-size':12,'text-anchor':'middle'}));
+    }
+
+    els.debug.textContent = `PCD=${PCD} mm, Ø=${DIA} mm, N=${N}, R=${R.toFixed(2)} mm, scale=${scale.toFixed(3)} px/mm (${fixed?'fixed':'auto'})`;
+  }
+
+  function circle(cx, cy, r, attrs={}){ const e=document.createElementNS('http://www.w3.org/2000/svg','circle'); e.setAttribute('cx',cx); e.setAttribute('cy',cy); e.setAttribute('r',r); set(e,attrs); return e; }
+  function line(x1,y1,x2,y2,attrs={}){ const e=document.createElementNS('http://www.w3.org/2000/svg','line'); e.setAttribute('x1',x1); e.setAttribute('y1',y1); e.setAttribute('x2',x2); e.setAttribute('y2',y2); set(e,attrs); return e; }
+  function text(x,y,str,attrs={}){ const e=document.createElementNS('http://www.w3.org/2000/svg','text'); e.setAttribute('x',x); e.setAttribute('y',y); e.textContent=str; set(e,attrs); return e; }
+  function set(el, attrs){ for (const k in attrs) el.setAttribute(k, attrs[k]); }
+
+  window.addEventListener('resize', draw);
+  if ('ResizeObserver' in window) { new ResizeObserver(draw).observe(document.getElementById('viz')); }
+  draw();
+})();
+</script>
+</body>
+</html>
